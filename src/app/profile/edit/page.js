@@ -6,8 +6,6 @@ import { useAuth } from '../../../contexts/AuthContext';
 import LocationPicker from '../../../components/LocationPicker';
 
 export default function EditProfilePage() {
-  console.log('🚀 EditProfilePage component rendered');
-  
   const router = useRouter();
   const { user, loading, updateProfile } = useAuth();
   const [formData, setFormData] = useState({
@@ -17,8 +15,6 @@ export default function EditProfilePage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-
-  console.log('📊 Current state:', { user: user?.nickname, loading, formData, isSubmitting });
 
   // 로그인하지 않은 사용자는 로그인 페이지로 리다이렉트
   useEffect(() => {
@@ -30,7 +26,6 @@ export default function EditProfilePage() {
   // 사용자 정보로 폼 초기화
   useEffect(() => {
     if (user) {
-      console.log('🔄 Initializing form with user data:', user);
       setFormData({
         nickname: user.nickname || '',
         location: user.location || '',
@@ -40,8 +35,6 @@ export default function EditProfilePage() {
   }, [user]);
 
   const handleSubmit = async (e) => {
-    console.log('🔥 handleSubmit called!', { e, formData, user });
-    
     if (e && e.preventDefault) {
       e.preventDefault();
     }
@@ -50,21 +43,18 @@ export default function EditProfilePage() {
     // 사용자 로그인 확인
     if (!user) {
       setError('로그인이 필요합니다.');
-      console.log('❌ User not logged in');
       return;
     }
 
     // 닉네임 검증
     if (!formData.nickname || formData.nickname.trim().length < 2) {
       setError('닉네임은 2자 이상이어야 합니다.');
-      console.log('❌ Nickname validation failed:', formData.nickname);
       return;
     }
 
     // 위치 검증
     if (!formData.location || formData.location.trim().length === 0) {
       setError('지역을 선택해주세요.');
-      console.log('❌ Location validation failed:', formData.location);
       return;
     }
 
@@ -75,12 +65,10 @@ export default function EditProfilePage() {
       formData.avatar_url !== (user.avatar_url || '');
 
     if (!hasChanges) {
-      console.log('ℹ️ No changes detected, skipping update');
       alert('변경된 내용이 없습니다.');
       return;
     }
 
-    console.log('✅ Validation passed, updating profile...');
     setIsSubmitting(true);
 
     try {
@@ -96,11 +84,8 @@ export default function EditProfilePage() {
       }
 
       if (data) {
-        console.log('✅ Profile updated successfully:', data);
         alert('프로필이 성공적으로 수정되었습니다!');
         router.push('/profile');
-      } else {
-        console.log('⚠️ No data returned from updateProfile');
       }
 
     } catch (error) {
@@ -113,7 +98,6 @@ export default function EditProfilePage() {
 
   // 헤더 저장 버튼용 핸들러
   const handleHeaderSave = () => {
-    console.log('🎯 Header save button clicked');
     handleSubmit();
   };
 

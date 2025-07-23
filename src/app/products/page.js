@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import ProductCard from '../components/ProductCard';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,7 +14,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all'); // all, digital, furniture, favorites
-  const [searchTerm, setSearchTerm] = useState(''); // 검색어
+  const [searchTerm, setSearchTerm] = useState(''); // 입력된 검색어
+  const [activeSearchTerm, setActiveSearchTerm] = useState(''); // 실제 검색에 사용된 검색어
   const [sortBy, setSortBy] = useState('latest'); // latest, price_low, price_high
 
   // 상품 목록 불러오기
@@ -40,63 +41,58 @@ export default function ProductsPage() {
         return;
       }
 
-      // user_id가 있는 상품들의 판매자 정보 조회 시도
-      const productsWithSellers = await Promise.all(
-        productsData.map(async (product) => {
-          if (product.user_id) {
-            try {
-              const { data: sellerData, error: sellerError } = await supabase
-                .from('users')
-                .select('nickname, location, rating')
-                .eq('id', product.user_id)
-                .single();
+      // 모든 고유한 판매자 ID 수집
+      const uniqueUserIds = [...new Set(productsData.filter(p => p.user_id).map(p => p.user_id))];
+      
+      // 모든 판매자 정보를 한 번에 조회
+      let sellersMap = {};
+      if (uniqueUserIds.length > 0) {
+        try {
+          const { data: sellersData, error: sellersError } = await supabase
+            .from('users')
+            .select('id, nickname, location, rating')
+            .in('id', uniqueUserIds);
 
-              if (sellerError || !sellerData) {
-                // 판매자 정보를 가져올 수 없는 경우 기본값 설정
-                return {
-                  ...product,
-                  seller: {
-                    nickname: '판매자' + product.user_id.slice(0, 4),
-                    location: '함정동',
-                    rating: 5.0
-                  }
-                };
-              }
-
-              return {
-                ...product,
-                seller: sellerData
-              };
-            } catch (err) {
-              console.warn('users 테이블에 접근할 수 없습니다:', err);
-              return {
-                ...product,
-                seller: {
-                  nickname: '판매자' + (product.user_id ? product.user_id.slice(0, 4) : ''),
-                  location: '함정동',
-                  rating: 5.0
-                }
-              };
-            }
-          } else {
-            // user_id가 없는 경우
-            return {
-              ...product,
-              seller: {
-                nickname: '익명의 판매자',
-                location: '함정동',
-                rating: 5.0
-              }
-            };
+          if (!sellersError && sellersData) {
+            sellersMap = sellersData.reduce((acc, seller) => {
+              acc[seller.id] = seller;
+              return acc;
+            }, {});
           }
-        })
-      );
+        } catch (err) {
+          console.warn('users 테이블에 접근할 수 없습니다:', err);
+        }
+      }
+
+      // 상품에 판매자 정보 매핑
+      const productsWithSellers = productsData.map(product => {
+        if (product.user_id) {
+          const seller = sellersMap[product.user_id];
+          return {
+            ...product,
+            seller: seller || {
+              nickname: '판매자' + product.user_id.slice(0, 4),
+              location: '함정동',
+              rating: 5.0
+            }
+          };
+        } else {
+          return {
+            ...product,
+            seller: {
+              nickname: '익명의 판매자',
+              location: '함정동',
+              rating: 5.0
+            }
+          };
+        }
+      });
 
       setProducts(productsWithSellers);
       
       // 초기 로드 시에는 favorites 필터를 제외하고 적용 (favorites는 별도 useEffect에서 처리)
       if (activeFilter !== 'favorites') {
-        applyFiltersAndSearch(productsWithSellers, activeFilter, searchTerm, sortBy);
+        applyFiltersAndSearch(productsWithSellers, activeFilter, '', sortBy);
       }
 
     } catch (error) {
@@ -105,10 +101,10 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeFilter, searchTerm, sortBy]);
+  }, []);
 
   // 검색 기능
-  const searchProducts = (productList, term) => {
+  const searchProducts = useCallback((productList, term) => {
     if (!term || term.trim() === '') {
       return productList;
     }
@@ -120,10 +116,10 @@ export default function ProductsPage() {
       
       return title.includes(searchTerm) || description.includes(searchTerm);
     });
-  };
+  }, []);
 
   // 필터 적용
-  const applyFilter = (productList, filter) => {
+  const applyFilter = useCallback((productList, filter) => {
     switch (filter) {
       case 'digital':
         // 디지털 기기 관련 키워드로 필터링
@@ -154,29 +150,17 @@ export default function ProductsPage() {
         });
       case 'favorites':
         // 관심상품만 필터링 (유효한 상품만)
-        console.log('🔍 Filtering favorites:', { 
-          allFavorites: favorites, 
-          validFavorites, 
-          productListLength: productList.length 
-        });
-        const filtered = productList.filter(product => {
+        return productList.filter(product => {
           const productId = String(product.id);
-          // validFavorites를 사용하여 실제 존재하는 상품만 필터링
-          const isFavorite = validFavorites.includes(productId);
-          if (isFavorite) {
-            console.log('✅ Found valid favorite product:', { id: productId, title: product.title });
-          }
-          return isFavorite;
+          return validFavorites.includes(productId);
         });
-        console.log('🔍 Filtered result:', filtered.length, 'valid favorites found');
-        return filtered;
       default:
         return productList;
     }
-  };
+  }, [validFavorites]);
 
   // 상품 정렬
-  const sortProducts = (productList, sortType) => {
+  const sortProducts = useCallback((productList, sortType) => {
     const sorted = [...productList];
     
     switch (sortType) {
@@ -219,7 +203,7 @@ export default function ProductsPage() {
       default:
         return sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     }
-  };
+  }, []);
 
   // 필터, 검색, 정렬을 함께 적용
   const applyFiltersAndSearch = useCallback((productList, filter, search, sort = sortBy) => {
@@ -234,31 +218,37 @@ export default function ProductsPage() {
     // 3. 마지막으로 정렬 적용
     filtered = sortProducts(filtered, sort);
     
-    console.log('📊 Applied sorting:', { 
-      sortType: sort, 
-      beforeCount: productList.length, 
-      afterCount: filtered.length 
-    });
+
 
     setFilteredProducts(filtered);
-  }, [sortBy, favorites, validFavorites]);
+  }, [searchProducts, applyFilter, sortProducts, validFavorites]);
 
-  // 검색어 변경 처리
+  // 검색어 입력 처리 (검색 실행하지 않음)
   const handleSearchChange = (term) => {
     setSearchTerm(term);
-    applyFiltersAndSearch(products, activeFilter, term, sortBy);
+  };
+
+  // 검색 실행 처리
+  const handleSearchSubmit = () => {
+    setActiveSearchTerm(searchTerm);
+    applyFiltersAndSearch(products, activeFilter, searchTerm, sortBy);
+  };
+
+  // Enter 키 처리
+  const handleSearchKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleSearchSubmit();
+    }
   };
 
   // 정렬 변경 처리
   const handleSortChange = (sort) => {
-    console.log('📊 Sort changed to:', sort);
     setSortBy(sort);
     applyFiltersAndSearch(products, activeFilter, searchTerm, sort);
   };
 
   // 필터 변경
   const handleFilterChange = (filter) => {
-    console.log('🔄 Filter changed to:', filter);
     setActiveFilter(filter);
     
     // favorites 필터는 useEffect에서 처리하므로 여기서는 제외
@@ -282,7 +272,6 @@ export default function ProductsPage() {
     // URL 쿼리 파라미터에서 초기 필터 설정
     const urlParams = new URLSearchParams(window.location.search);
     const filterParam = urlParams.get('filter');
-    console.log('🔗 URL filter parameter:', filterParam);
     if (filterParam && ['all', 'digital', 'furniture', 'favorites'].includes(filterParam)) {
       setActiveFilter(filterParam);
     }
@@ -291,24 +280,16 @@ export default function ProductsPage() {
   // favorites가 변경되거나 products가 로드될 때 관심상품 필터 적용
   useEffect(() => {
     if (activeFilter === 'favorites' && products.length > 0 && !favoritesLoading) {
-      console.log('🔄 Re-applying favorites filter:', { 
-        favorites, 
-        favoritesCount,
-        productsCount: products.length, 
-        activeFilter,
-        favoritesLoading
-      });
-      applyFiltersAndSearch(products, 'favorites', searchTerm, sortBy);
+      applyFiltersAndSearch(products, 'favorites', '', sortBy); // 검색어는 빈 문자열로 초기화
     }
-  }, [validFavorites, products, activeFilter, searchTerm, favoritesLoading, applyFiltersAndSearch, sortBy]);
+  }, [validFavorites, products, activeFilter, favoritesLoading, applyFiltersAndSearch, sortBy]);
 
   // products가 로드되고 activeFilter가 설정된 후 일반 필터 적용
   useEffect(() => {
     if (products.length > 0 && activeFilter !== 'favorites') {
-      console.log('🔄 Applying general filter:', { activeFilter, productsCount: products.length });
-      applyFiltersAndSearch(products, activeFilter, searchTerm, sortBy);
+      applyFiltersAndSearch(products, activeFilter, '', sortBy); // 검색어는 빈 문자열로 초기화
     }
-  }, [products, activeFilter, searchTerm, sortBy, applyFiltersAndSearch]);
+  }, [products, activeFilter, sortBy, applyFiltersAndSearch]);
 
   if (loading || (activeFilter === 'favorites' && favoritesLoading)) {
     return (
@@ -411,20 +392,33 @@ export default function ProductsPage() {
                 placeholder="상품명, 설명으로 검색..."
                 value={searchTerm}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-opacity-20 bg-gray-50"
+                onKeyPress={handleSearchKeyPress}
+                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-opacity-20 bg-gray-50"
               />
               <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
                 <span className="text-gray-400 text-lg">🔍</span>
               </div>
               {searchTerm && (
                 <button
-                  onClick={() => handleSearchChange('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setActiveSearchTerm('');
+                    applyFiltersAndSearch(products, activeFilter, '', sortBy);
+                  }}
+                  className="absolute right-12 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   ✕
                 </button>
               )}
             </div>
+            
+            {/* 검색 버튼 */}
+            <button
+              onClick={handleSearchSubmit}
+              className="px-4 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 focus:ring-2 focus:ring-orange-500 focus:ring-opacity-20 transition-colors font-medium"
+            >
+              검색
+            </button>
             
             {/* 정렬 드롭다운 */}
             <div className="relative">
@@ -444,9 +438,9 @@ export default function ProductsPage() {
           </div>
           
           {/* 검색 결과 표시 */}
-          {searchTerm && (
+          {activeSearchTerm && (
             <div className="mt-3 text-sm text-gray-600">
-              &ldquo;<span className="font-medium text-orange-600">{searchTerm}</span>&rdquo; 검색 결과 {filteredProducts.length}개
+              &ldquo;<span className="font-medium text-orange-600">{activeSearchTerm}</span>&rdquo; 검색 결과 {filteredProducts.length}개
             </div>
           )}
           
@@ -527,15 +521,19 @@ export default function ProductsPage() {
       <main className="max-w-md mx-auto p-4">
         {filteredProducts.length === 0 ? (
           <div className="text-center py-12">
-            {searchTerm ? (
+            {activeSearchTerm ? (
               <>
                 <div className="text-4xl mb-4">🔍</div>
                 <p className="text-gray-600 mb-4">
-                  &ldquo;<span className="font-medium text-orange-600">{searchTerm}</span>&rdquo; 검색 결과가 없어요
+                  &ldquo;<span className="font-medium text-orange-600">{activeSearchTerm}</span>&rdquo; 검색 결과가 없어요
                 </p>
                 <p className="text-sm text-gray-500 mb-4">다른 검색어를 시도해보세요</p>
                 <button
-                  onClick={() => handleSearchChange('')}
+                  onClick={() => {
+                    setSearchTerm('');
+                    setActiveSearchTerm('');
+                    applyFiltersAndSearch(products, activeFilter, '', sortBy);
+                  }}
                   className="text-orange-500 hover:text-orange-600 font-medium"
                 >
                   검색어 지우기

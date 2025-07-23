@@ -41,12 +41,7 @@ export default function ProductDetailPage({ params }) {
         return;
       }
 
-      console.log('📦 상품 데이터 로드:', {
-        id: productData.id,
-        title: productData.title,
-        image_url: productData.image_url ? productData.image_url.substring(0, 50) + '...' : 'null',
-        image: productData.image ? productData.image.substring(0, 50) + '...' : 'null'
-      });
+
 
       setProduct(productData);
 
@@ -106,12 +101,6 @@ export default function ProductDetailPage({ params }) {
     e.preventDefault();
     if (!newComment.trim()) return;
 
-    console.log('💬 Comment submission started:', {
-      productId,
-      comment: newComment,
-      user: user?.nickname
-    });
-
     setCommentLoading(true);
     const { data, error } = await createComment(productId, newComment);
     
@@ -149,7 +138,6 @@ export default function ProductDetailPage({ params }) {
     } else {
       setComments(prev => [...prev, data]);
       setNewComment('');
-      console.log('Comment added successfully:', data);
     }
     setCommentLoading(false);
   };
@@ -186,20 +174,7 @@ export default function ProductDetailPage({ params }) {
   };
 
   const handleFavoriteClick = () => {
-    console.log('🔍 ProductDetail 찜하기 토글:', {
-      productId: productId,
-      currentlyLiked: isProductFavorite
-    });
-    
-    const wasAdded = toggleFavorite(productId);
-    
-    // 간단한 피드백
-    if (wasAdded) {
-      console.log('🔍 관심상품에 추가됨');
-      // 선택사항: 토스트 메시지 등을 추가할 수 있음
-    } else {
-      console.log('🔍 관심상품에서 제거됨');
-    }
+    toggleFavorite(productId);
   };
 
   if (loading) {

@@ -30,8 +30,6 @@ export default function MyProductsPage() {
       setLoading(true);
       setError(null);
 
-      console.log('👤 Fetching products for user:', user.id);
-
       // 현재 사용자가 올린 상품들만 조회
       const { data: productsData, error } = await supabase
         .from('market')
@@ -45,7 +43,6 @@ export default function MyProductsPage() {
         return;
       }
 
-      console.log('📦 My products loaded:', productsData?.length || 0);
       setMyProducts(productsData || []);
 
     } catch (error) {
@@ -79,7 +76,6 @@ export default function MyProductsPage() {
       setMyProducts(prev => prev.filter(product => product.id !== productId));
       
       // 관심상품 목록 정리 (삭제된 상품이 관심상품에 있던 경우)
-      console.log('🧹 Refreshing favorites after product deletion...');
       await refreshFavorites();
 
     } catch (error) {

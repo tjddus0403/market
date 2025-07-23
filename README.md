@@ -26,7 +26,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 #### 2.3 데이터베이스 테이블 생성
-Supabase 대시보드의 SQL Editor에서 `custom-user-schema.sql` 파일의 내용을 실행합니다.
+Supabase 대시보드의 SQL Editor에서 `schema.sql` 파일의 내용을 실행합니다.
+
+```sql
+-- schema.sql 파일의 모든 내용을 복사해서 SQL Editor에 붙여넣고 실행
+-- users, market, comments 테이블이 모두 생성됩니다
+```
 
 ### 3. 개발 서버 실행
 
@@ -38,7 +43,9 @@ npm run dev
 
 ## 📊 데이터베이스 스키마
 
-### users 테이블 (커스텀 사용자 시스템)
+> **중요**: 모든 테이블은 `schema.sql` 파일에서 한 번에 생성할 수 있습니다.
+
+### 1. users 테이블 (사용자 정보)
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
@@ -53,18 +60,29 @@ npm run dev
 | created_at | TIMESTAMP | 가입 시간 |
 | updated_at | TIMESTAMP | 수정 시간 |
 
-### market 테이블 (상품)
+### 2. market 테이블 (상품 정보)
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| id | BIGSERIAL | 기본키 (자동 생성) |
+| id | UUID | 기본키 (자동 생성) |
+| user_id | UUID | 등록자 ID (users 테이블 참조) |
 | title | TEXT | 상품 제목 |
 | description | TEXT | 상품 설명 |
-| price | INTEGER | 상품 가격 |
+| price | INTEGER | 상품 가격 (기본값: 0) |
 | image | TEXT | 상품 이미지 URL |
 | trade_type | TEXT | 거래방식 ('sell' 또는 'share') |
-| user_id | UUID | 등록자 ID (users 테이블 참조) |
 | created_at | TIMESTAMP | 생성 시간 |
+| updated_at | TIMESTAMP | 수정 시간 |
+
+### 3. comments 테이블 (댓글 정보)
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| id | UUID | 기본키 (자동 생성) |
+| product_id | UUID | 상품 ID (market 테이블 참조) |
+| user_id | UUID | 작성자 ID (users 테이블 참조) |
+| content | TEXT | 댓글 내용 |
+| created_at | TIMESTAMP | 작성 시간 |
 | updated_at | TIMESTAMP | 수정 시간 |
 
 ## 🔧 주요 기능
@@ -79,10 +97,18 @@ npm run dev
 
 ### ✅ 상품 관리
 - ➕ **상품 등록**: 제목, 설명, 가격, 이미지, 거래방식
-- 📋 **상품 목록**: 실시간 데이터베이스 연동
+- 📋 **상품 목록**: 실시간 데이터베이스 연동, 검색/필터/정렬 기능
 - 👁️ **상품 상세**: 판매자 정보 포함 상세 보기
 - 🔄 **거래방식**: 판매하기 / 나눠하기 구분
+- ❤️ **관심상품**: 찜하기 기능 (localStorage 기반)
 - 👨‍💼 **판매자 연동**: users 테이블과 JOIN으로 실제 사용자 정보 표시
+
+### ✅ 댓글 시스템
+- 💬 **댓글 작성**: 로그인한 사용자만 댓글 작성 가능
+- 👀 **댓글 조회**: 작성자 정보와 함께 실시간 표시
+- ✏️ **댓글 수정**: 본인 댓글만 수정 가능
+- 🗑️ **댓글 삭제**: 본인 댓글만 삭제 가능
+- 🔗 **사용자 연동**: 댓글 작성자 정보 자동 매핑
 
 ### ✅ UI/UX
 - 📱 **반응형 디자인**: 모바일 최적화
@@ -96,10 +122,27 @@ npm run dev
 /                    → 메인 홈페이지 (로그인 상태별 UI)
 /auth/login          → 로그인 (커스텀 인증)
 /auth/signup         → 회원가입 (커스텀 인증)
-/products            → 상품 목록 (실제 사용자 정보 표시)
-/products/[id]       → 상품 상세 (판매자 정보 포함)
+/products            → 상품 목록 (검색/필터/정렬, 관심상품)
+/products/[id]       → 상품 상세 (판매자 정보, 댓글 시스템)
 /sell                → 상품 등록 (로그인 필요)
+/sell/edit/[id]      → 상품 수정 (본인 상품만)
+/profile             → 사용자 프로필 (내 정보, 통계)
+/profile/edit        → 프로필 수정 (로그인 필요)
+/my-products         → 내가 올린 상품 관리 (로그인 필요)
 ```
+
+## 🗃️ 파일 구조
+
+### 📄 데이터베이스 스키마
+- `schema.sql` - **통합 데이터베이스 스키마** (users, market, comments 테이블)
+
+### 🎨 컴포넌트
+- `ProductCard.js` - 상품 카드 컴포넌트 (React.memo 최적화)
+- `LocationPicker.js` - 지역 선택 컴포넌트
+
+### 🧠 Context
+- `AuthContext.js` - 사용자 인증 및 댓글 관리
+- `FavoritesContext.js` - 관심상품 관리 (localStorage)
 
 ## 🛡️ 보안 및 권한
 

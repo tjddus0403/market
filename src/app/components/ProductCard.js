@@ -1,9 +1,10 @@
 'use client';
+import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useFavorites } from '../../contexts/FavoritesContext';
 
-export default function ProductCard({ product, seller }) {
+const ProductCard = React.memo(({ product, seller }) => {
   const { toggleFavorite, isFavorite } = useFavorites();
   const isLiked = isFavorite(product.id);
 
@@ -35,20 +36,7 @@ export default function ProductCard({ product, seller }) {
     e.preventDefault(); // Link 클릭 방지
     e.stopPropagation();
     
-    console.log('🛍️ ProductCard 찜하기 토글:', {
-      productId: product.id,
-      currentlyLiked: isLiked
-    });
-    
-    const wasAdded = toggleFavorite(product.id);
-    
-    // 간단한 피드백
-    if (wasAdded) {
-      console.log('🛍️ 관심상품에 추가됨');
-      // 선택사항: 토스트 메시지 등을 추가할 수 있음
-    } else {
-      console.log('🛍️ 관심상품에서 제거됨');
-    }
+    toggleFavorite(product.id);
   };
 
   return (
@@ -135,4 +123,8 @@ export default function ProductCard({ product, seller }) {
       </button>
     </div>
   );
-} 
+});
+
+ProductCard.displayName = 'ProductCard';
+
+export default ProductCard; 

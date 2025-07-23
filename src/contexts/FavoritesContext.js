@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 const FavoritesContext = createContext({});
@@ -27,7 +27,6 @@ export const FavoritesProvider = ({ children }) => {
           // ID들을 문자열로 정규화
           const normalizedFavorites = parsed.map(id => String(id));
           setFavorites(normalizedFavorites);
-          console.log('💾 Favorites loaded from localStorage:', normalizedFavorites);
           
           // 존재하지 않는 상품 ID 정리
           await cleanupInvalidFavorites(normalizedFavorites);
@@ -46,15 +45,13 @@ export const FavoritesProvider = ({ children }) => {
   }, []);
 
   // 존재하지 않는 상품 ID 정리
-  const cleanupInvalidFavorites = async (favoriteIds) => {
+  const cleanupInvalidFavorites = useCallback(async (favoriteIds) => {
     if (!favoriteIds || favoriteIds.length === 0) {
       setValidFavorites([]);
       return [];
     }
 
     try {
-      console.log('🧹 Cleaning up invalid favorites...', favoriteIds);
-      
       // 관심상품 ID들 중 실제 존재하는 상품만 조회
       const { data: existingProducts, error } = await supabase
         .from('market')
@@ -70,14 +67,8 @@ export const FavoritesProvider = ({ children }) => {
       // 실제 존재하는 상품 ID만 추출
       const existingIds = (existingProducts || []).map(product => String(product.id));
       
-      // 존재하지 않는 상품 ID 찾기
-      const invalidIds = favoriteIds.filter(id => !existingIds.includes(id));
-      
-      if (invalidIds.length > 0) {
-        console.log('🗑️ Found invalid favorite IDs to remove:', invalidIds);
-        console.log('✅ Valid favorite IDs:', existingIds);
-        
-        // localStorage에서 유효한 ID들만 저장
+      // 존재하지 않는 상품이 있는 경우에만 localStorage 업데이트
+      if (existingIds.length !== favoriteIds.length) {
         localStorage.setItem('carrot_market_favorites', JSON.stringify(existingIds));
         setFavorites(existingIds);
       }
@@ -90,14 +81,13 @@ export const FavoritesProvider = ({ children }) => {
       setValidFavorites(favoriteIds); // 오류 시 원본 유지
       return favoriteIds;
     }
-  };
+  }, []); // 의존성이 없으므로 빈 배열
 
   // localStorage에 관심상품 목록 저장
   const saveFavorites = (newFavorites) => {
     try {
       localStorage.setItem('carrot_market_favorites', JSON.stringify(newFavorites));
       setFavorites(newFavorites);
-      console.log('💾 Favorites saved to localStorage:', newFavorites);
       
       // 새로 저장할 때도 유효성 검사
       cleanupInvalidFavorites(newFavorites);
@@ -109,43 +99,33 @@ export const FavoritesProvider = ({ children }) => {
   // 관심상품 추가
   const addToFavorites = (productId) => {
     const normalizedProductId = String(productId);
-    console.log('➕ addToFavorites called with:', normalizedProductId);
-    console.log('➕ Current favorites:', favorites);
     
     if (!favorites.includes(normalizedProductId)) {
       const newFavorites = [...favorites, normalizedProductId];
       saveFavorites(newFavorites);
       return true;
     }
-    console.log('➕ Product already in favorites');
     return false;
   };
 
   // 관심상품 제거
   const removeFromFavorites = (productId) => {
     const normalizedProductId = String(productId);
-    console.log('➖ removeFromFavorites called with:', normalizedProductId);
-    console.log('➖ Current favorites:', favorites);
     
     const newFavorites = favorites.filter(id => id !== normalizedProductId);
     saveFavorites(newFavorites);
-    console.log('➖ Updated favorites:', newFavorites);
     return true;
   };
 
   // 관심상품 토글
   const toggleFavorite = (productId) => {
     const normalizedProductId = String(productId);
-    console.log('🔄 toggleFavorite called with:', normalizedProductId);
-    console.log('🔄 Current favorites before toggle:', favorites);
     
     if (favorites.includes(normalizedProductId)) {
       removeFromFavorites(normalizedProductId);
-      console.log('🔄 Product removed from favorites');
       return false; // 제거됨
     } else {
       addToFavorites(normalizedProductId);
-      console.log('🔄 Product added to favorites');
       return true; // 추가됨
     }
   };
@@ -153,24 +133,16 @@ export const FavoritesProvider = ({ children }) => {
   // 특정 상품이 관심상품인지 확인 (유효한 상품만)
   const isFavorite = (productId) => {
     const normalizedProductId = String(productId);
-    const result = validFavorites.includes(normalizedProductId);
-    console.log('❓ isFavorite check:', { 
-      productId, 
-      normalizedProductId, 
-      allFavorites: favorites,
-      validFavorites, 
-      result 
-    });
-    return result;
+    return validFavorites.includes(normalizedProductId);
   };
 
   // 관심상품 개수 (유효한 상품만)
   const favoritesCount = validFavorites.length;
 
   // 수동으로 정리 함수 제공
-  const refreshFavorites = async () => {
+  const refreshFavorites = useCallback(async () => {
     await cleanupInvalidFavorites(favorites);
-  };
+  }, [favorites, cleanupInvalidFavorites]);
 
   const value = {
     favorites,

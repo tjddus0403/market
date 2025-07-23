@@ -35,7 +35,6 @@ export default function ProfilePage() {
         return;
       }
 
-      console.log('📦 My products count:', count);
       setMyProductsCount(count || 0);
 
     } catch (error) {
