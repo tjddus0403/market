@@ -221,7 +221,7 @@ export default function ProductsPage() {
 
 
     setFilteredProducts(filtered);
-  }, [searchProducts, applyFilter, sortProducts, validFavorites]);
+  }, [searchProducts, applyFilter, sortProducts]); // validFavorites 제거로 순환 dependency 해결
 
   // 검색어 입력 처리 (검색 실행하지 않음)
   const handleSearchChange = (term) => {

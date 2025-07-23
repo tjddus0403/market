@@ -45,10 +45,10 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user?.id) {
       fetchMyProductsCount();
-      // 프로필 페이지 로드 시 관심상품 정리
+      // 프로필 페이지 로드 시 관심상품 정리 (한 번만 실행)
       refreshFavorites();
     }
-  }, [user?.id, fetchMyProductsCount, refreshFavorites]);
+  }, [user?.id, fetchMyProductsCount]); // refreshFavorites 제거
 
   const handleSignOut = async () => {
     const confirmed = window.confirm('정말 로그아웃 하시겠습니까?');
