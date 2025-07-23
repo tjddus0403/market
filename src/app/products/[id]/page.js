@@ -1,6 +1,6 @@
 'use client';
 import Image from 'next/image';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useFavorites } from '../../../contexts/FavoritesContext';
@@ -21,17 +21,10 @@ export default function ProductDetailPage({ params }) {
   const [editContent, setEditContent] = useState('');
   const [commentsError, setCommentsError] = useState(null);
 
-  const productId = params.id;
+  const productId = use(params).id;
 
   // 로컬 상태 대신 Context의 isFavorite 직접 사용
   const isProductFavorite = isFavorite(productId);
-
-  useEffect(() => {
-    if (productId) {
-      fetchProduct();
-      fetchComments();
-    }
-  }, [productId, fetchProduct, fetchComments]);
 
   const fetchProduct = useCallback(async () => {
     try {
@@ -101,6 +94,13 @@ export default function ProductDetailPage({ params }) {
       setComments(data);
     }
   }, [getComments, productId]);
+
+  useEffect(() => {
+    if (productId) {
+      fetchProduct();
+      fetchComments();
+    }
+  }, [productId, fetchProduct, fetchComments]);
 
   const handleCommentSubmit = async (e) => {
     e.preventDefault();
