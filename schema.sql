@@ -4,12 +4,18 @@
 -- 사용 테이블: users, market, comments
 
 -- ===========================================
+-- 0. 필수 Extension 활성화
+-- ===========================================
+-- UUID 생성을 위한 pgcrypto extension 활성화
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ===========================================
 -- 1. USERS 테이블 (사용자 정보)
 -- ===========================================
+-- Supabase Auth의 UID를 참조하는 사용자 추가 정보 테이블
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
   nickname TEXT UNIQUE NOT NULL,
   avatar_url TEXT,
   location TEXT DEFAULT '함정동',

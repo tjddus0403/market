@@ -17,101 +17,26 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 비밀번호 해시 함수 (간단한 예시 - 실제로는 더 안전한 방법 사용 권장)
-  const hashPassword = async (password) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + 'salt_string'); // 실제로는 랜덤 솔트 사용
-    const hash = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-  };
-
-  // 세션 저장
-  const saveSession = (userData) => {
-    localStorage.setItem('user_session', JSON.stringify({
-      id: userData.id,
-      email: userData.email,
-      nickname: userData.nickname,
-      avatar_url: userData.avatar_url,
-      location: userData.location,
-      rating: userData.rating,
-      trade_count: userData.trade_count,
-      loginTime: Date.now()
-    }));
-  };
-
-  // 세션 가져오기
-  const getSession = () => {
-    try {
-      const session = localStorage.getItem('user_session');
-      if (!session) return null;
-      
-      const sessionData = JSON.parse(session);
-      
-      // 24시간 후 세션 만료
-      if (Date.now() - sessionData.loginTime > 24 * 60 * 60 * 1000) {
-        localStorage.removeItem('user_session');
-        return null;
-      }
-      
-      return sessionData;
-    } catch (error) {
-      console.error('Error getting session:', error);
-      return null;
-    }
-  };
-
-  // 세션 삭제
-  const clearSession = () => {
-    localStorage.removeItem('user_session');
-  };
-
-  // 로그인
-  const signIn = async (email, password) => {
-    try {
-      const passwordHash = await hashPassword(password);
-      
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .eq('password_hash', passwordHash)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return { data: null, error: { message: '이메일 또는 비밀번호가 올바르지 않습니다.' } };
-        }
-        return { data: null, error };
-      }
-
-      if (data) {
-        setUser(data);
-        saveSession(data);
-        return { data, error: null };
-      }
-
-      return { data: null, error: { message: '이메일 또는 비밀번호가 올바르지 않습니다.' } };
-    } catch (error) {
-      console.error('Login error:', error);
-      return { data: null, error: { message: '로그인 중 오류가 발생했습니다.' } };
-    }
-  };
-
-  // 회원가입
+  // 회원가입 - Supabase Auth + 사용자 추가 정보
   const signUp = async (email, password, nickname, location = '함정동') => {
     try {
-      // 이메일 중복 확인
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .single();
+      // 1. Supabase Auth로 계정 생성
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-      if (existingUser) {
-        return { data: null, error: { message: '이미 존재하는 이메일입니다.' } };
+      if (authError) {
+        return { data: null, error: { message: authError.message } };
       }
 
-      // 닉네임 중복 확인
+      // 2. 인증이 성공했지만 이메일 확인 대기 중일 수 있음
+      const userId = authData.user?.id;
+      if (!userId) {
+        return { data: null, error: { message: '사용자 ID를 생성할 수 없습니다.' } };
+      }
+
+      // 3. 닉네임 중복 확인
       const { data: existingNickname } = await supabase
         .from('users')
         .select('id')
@@ -119,19 +44,19 @@ export const AuthProvider = ({ children }) => {
         .single();
 
       if (existingNickname) {
+        // Auth에서 생성된 계정 삭제 시도 (실제로는 불가능하지만 알려줌)
         return { data: null, error: { message: '이미 존재하는 닉네임입니다.' } };
       }
 
-      const passwordHash = await hashPassword(password);
-
-      const { data, error } = await supabase
+      // 4. users 테이블에 추가 정보 저장
+      const { data: userProfileData, error: profileError } = await supabase
         .from('users')
         .insert([
           {
+            id: userId, // Supabase Auth의 UID 사용
             email,
-            password_hash: passwordHash,
             nickname,
-            location,  // 사용자가 선택한 위치 저장
+            location,
             rating: 5.0,
             trade_count: 0
           }
@@ -139,25 +64,85 @@ export const AuthProvider = ({ children }) => {
         .select()
         .single();
 
-      if (error) {
-        return { data: null, error };
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        return { data: null, error: { message: '사용자 프로필 생성 중 오류가 발생했습니다.' } };
       }
 
-      return { data, error: null };
+      return { data: { auth: authData, profile: userProfileData }, error: null };
     } catch (error) {
       console.error('Signup error:', error);
       return { data: null, error: { message: '회원가입 중 오류가 발생했습니다.' } };
     }
   };
 
-  // 로그아웃
-  const signOut = async () => {
-    setUser(null);
-    clearSession();
-    return { error: null };
+  // 로그인 - Supabase Auth + 사용자 추가 정보 조회
+  const signIn = async (email, password) => {
+    try {
+      // 1. Supabase Auth로 로그인
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        return { data: null, error: { message: authError.message } };
+      }
+
+      // 2. users 테이블에서 추가 정보 조회
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        // 프로필이 없는 경우 Auth 정보만으로 기본 사용자 객체 생성
+        const basicUser = {
+          id: authData.user.id,
+          email: authData.user.email,
+          nickname: authData.user.email.split('@')[0],
+          location: '함정동',
+          rating: 5.0,
+          trade_count: 0
+        };
+        setUser(basicUser);
+        return { data: { auth: authData, profile: basicUser }, error: null };
+      }
+
+      // 3. Auth 정보와 프로필 정보 병합
+      const combinedUser = {
+        ...userProfile,
+        auth: authData.user
+      };
+
+      setUser(combinedUser);
+      return { data: { auth: authData, profile: combinedUser }, error: null };
+    } catch (error) {
+      console.error('Login error:', error);
+      return { data: null, error: { message: '로그인 중 오류가 발생했습니다.' } };
+    }
   };
 
-  // 사용자 정보 업데이트
+  // 로그아웃
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Logout error:', error);
+        return { error: { message: '로그아웃 중 오류가 발생했습니다.' } };
+      }
+      
+      setUser(null);
+      return { error: null };
+    } catch (error) {
+      console.error('Logout error:', error);
+      return { error: { message: '로그아웃 중 오류가 발생했습니다.' } };
+    }
+  };
+
+  // 사용자 프로필 업데이트
   const updateProfile = async (updates) => {
     try {
       if (!user) return { data: null, error: { message: '로그인이 필요합니다.' } };
@@ -173,8 +158,7 @@ export const AuthProvider = ({ children }) => {
         return { data: null, error };
       }
 
-      setUser(data);
-      saveSession(data);
+      setUser({ ...user, ...data });
       return { data, error: null };
     } catch (error) {
       console.error('Update profile error:', error);
@@ -182,7 +166,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 댓글 관련 함수들
+  // 댓글 관련 함수들 (기존 로직 유지)
   
   // 댓글 목록 가져오기
   const getComments = async (productId) => {
@@ -408,36 +392,85 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 초기 세션 복원
+  // Supabase Auth 상태 변화 감지 및 초기화
   useEffect(() => {
     const initializeAuth = async () => {
-      const sessionData = getSession();
-      
-      if (sessionData) {
-        // 세션이 있으면 사용자 정보를 DB에서 다시 가져와 최신 상태 확인
-        try {
-          const { data, error } = await supabase
+      try {
+        // 현재 세션 확인
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          // users 테이블에서 추가 정보 조회
+          const { data: userProfile, error: profileError } = await supabase
             .from('users')
             .select('*')
-            .eq('id', sessionData.id)
+            .eq('id', session.user.id)
             .single();
 
-          if (data && !error) {
-            setUser(data);
-            saveSession(data); // 최신 정보로 세션 업데이트
+          if (userProfile && !profileError) {
+            setUser({
+              ...userProfile,
+              auth: session.user
+            });
           } else {
-            clearSession(); // 유효하지 않은 세션 제거
+            // 프로필이 없는 경우 기본 사용자 객체 생성
+            const basicUser = {
+              id: session.user.id,
+              email: session.user.email,
+              nickname: session.user.email?.split('@')[0] || '사용자',
+              location: '함정동',
+              rating: 5.0,
+              trade_count: 0,
+              auth: session.user
+            };
+            setUser(basicUser);
           }
-        } catch (error) {
-          console.error('Session restore error:', error);
-          clearSession();
         }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     };
 
     initializeAuth();
+
+    // Auth 상태 변화 감지
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          // 로그인 시 추가 정보 조회
+          const { data: userProfile } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (userProfile) {
+            setUser({
+              ...userProfile,
+              auth: session.user
+            });
+          } else {
+            const basicUser = {
+              id: session.user.id,
+              email: session.user.email,
+              nickname: session.user.email?.split('@')[0] || '사용자',
+              location: '함정동',
+              rating: 5.0,
+              trade_count: 0,
+              auth: session.user
+            };
+            setUser(basicUser);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+        setLoading(false);
+      }
+    );
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   const value = {
